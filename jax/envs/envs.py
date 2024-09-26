@@ -6,6 +6,7 @@ import highway_env
 import numpy as np
 import vizdoom as vzd
 import itertools as it
+import jax.numpy as jnp
 
 from .gym_wrappers import * 
 from collections import deque
@@ -34,27 +35,14 @@ class AtariEnv:
             
         self.num_actions = self.env.action_space.n
 
-    def reset(self, return_unwarped=False):
+    def reset(self):
         state = self.env.reset()
-        if return_unwarped:
-            return (
-                np.expand_dims(np.transpose(state, (2, 0, 1)), 0).astype(np.uint8),
-                np.expand_dims(np.transpose(state, (2, 0, 1)), 0).astype(np.uint8)
-            )
-        else:
-            return np.expand_dims(np.transpose(state, (2, 0, 1)), 0).astype(np.uint8)
+        return jnp.expand_dims(jnp.asarray(state), 0) / 255.0
             
-    
-    def step(self, action, return_unwarped=False):
+    def step(self, action):
         next_state, reward, done, info = self.env.step(action)
-        if return_unwarped:
-            return (
-                np.expand_dims(np.transpose(next_state, (2, 0, 1)), 0).astype(np.uint8), 
-                np.expand_dims(np.transpose(next_state, (2, 0, 1)), 0).astype(np.uint8), 
-                reward, done, info
-            )
-        else:
-            return np.expand_dims(np.transpose(next_state, (2, 0, 1)), 0).astype(np.uint8), reward, done, info
+        next_state = jnp.expand_dims(jnp.asarray(next_state), 0) / 255.0
+        return next_state, reward, done, info
     
     def random_action(self):
         return self.env.action_space.sample()
@@ -77,27 +65,14 @@ class HighwayEnv:
         self.env.configure(config)
         self.num_actions = self.env.action_space.n
         
-    def reset(self, return_unwarped=False):
+    def reset(self):
         state = self.env.reset()
-        if return_unwarped:
-            return (
-                np.expand_dims(state, 0).astype(np.uint8),
-                np.expand_dims(state, 0).astype(np.uint8)
-            )
-        else:
-            return np.expand_dims(state, 0).astype(np.uint8)
-            
+        return jnp.expand_dims(jnp.transpose(jnp.asarray(state), (1, 2, 0)), 0) / 255.0            
     
-    def step(self, action, return_unwarped=False):
+    def step(self, action):
         next_state, reward, done, info = self.env.step(action)
-        if return_unwarped:
-            return (
-                np.expand_dims(next_state, 0).astype(np.uint8), 
-                np.expand_dims(next_state, 0).astype(np.uint8), 
-                reward, done, info
-            )
-        else:
-            return np.expand_dims(next_state, 0).astype(np.uint8), reward, done, info
+        next_state = jnp.expand_dims(jnp.transpose(jnp.asarray(next_state), (1, 2, 0)), 0) / 255.0
+        return next_state, reward, done, info
     
     def random_action(self):
         return self.env.action_space.sample()
@@ -142,42 +117,24 @@ class VizdoomEnv:
     def _warp(self, frame):
         return cv2.resize(frame, (self.frame_res[1], self.frame_res[0]), cv2.INTER_AREA)
         
-    def reset(self, return_unwarped=False):
+    def reset(self):
         self.env.new_episode()
         self.state_deck = deque(maxlen=self.frame_stack)
         for _ in range(self.frame_stack):
             self.state_deck.append(self._warp(self.env.get_state().screen_buffer))
-            self.state_deck_unwarped.append(self.env.get_state().screen_buffer)
-        
-        if return_unwarped:
-            return (
-                np.expand_dims(np.asarray(self.state_deck), 0).astype(np.uint8),
-                np.expand_dims(np.asarray(self.state_deck_unwarped), 0).astype(np.uint8)
-            )
-        else:
-            return np.expand_dims(np.asarray(self.state_deck), 0).astype(np.uint8) 
+        return jnp.expand_dims(jnp.transpose(jnp.asarray(self.state_deck), (1, 2, 0)), 0) / 255.0        
     
-    def step(self, action, return_unwarped=False):        
+    def step(self, action):        
         reward = self.env.make_action(self.actions[action], self.frame_skip)
         done = self.env.is_episode_finished()
         if done:
             next_state = np.zeros_like(self.state_deck[-1])
-            next_state_unwarped = np.zeros_like(self.state_deck_unwarped[-1])
         else:
             next_state = self._warp(self.env.get_state().screen_buffer)        
-            next_state_unwarped = self.env.get_state().screen_buffer
         
         self.state_deck.append(next_state)
-        self.state_deck_unwarped.append(next_state_unwarped)
-        
-        if return_unwarped:
-            return (
-                np.expand_dims(np.asarray(self.state_deck), 0).astype(np.uint8), 
-                np.expand_dims(np.asarray(self.state_deck_unwarped), 0).astype(np.uint8),
-                reward, done, {}
-            )
-        else:
-            return np.expand_dims(np.asarray(self.state_deck), 0).astype(np.uint8), reward, done, {}
+        next_state = jnp.expand_dims(jnp.transpose(jnp.asarray(self.state_deck), (1, 2, 0)), 0) / 255.0   
+        return next_state, reward, done, {}
     
     def random_action(self):
         return np.random.randint(0, self.num_actions, size=1).item()

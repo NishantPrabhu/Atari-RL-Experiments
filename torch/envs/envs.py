@@ -36,11 +36,12 @@ class AtariEnv:
 
     def reset(self):
         state = self.env.reset()
-        return np.expand_dims(np.transpose(state, (2, 0, 1)), 0)
-    
+        return np.expand_dims(np.transpose(state, (2, 0, 1)), 0) / 255.0
+            
     def step(self, action):
         next_state, reward, done, info = self.env.step(action)
-        return np.expand_dims(np.transpose(next_state, (2, 0, 1)), 0), reward, done, info
+        next_state = np.expand_dims(np.transpose(next_state, (2, 0, 1)), 0) / 255.0
+        return next_state, reward, done, info
     
     def random_action(self):
         return self.env.action_space.sample()
@@ -55,8 +56,7 @@ class HighwayEnv:
                 'observation_shape': tuple(frame_res),
                 'stack_size': frame_stack,
                 'weights': [0.2989, 0.5870, 0.1140],
-                'scaling': scaling,
-                'duration': 40
+                'scaling': scaling
             },
             'policy_frequency': frame_skip
         }
@@ -66,11 +66,12 @@ class HighwayEnv:
         
     def reset(self):
         state = self.env.reset()
-        return np.expand_dims(state, 0) 
+        return np.expand_dims(state, 0) / 255.0            
     
     def step(self, action):
         next_state, reward, done, info = self.env.step(action)
-        return np.expand_dims(next_state, 0), reward, done, info
+        next_state = np.expand_dims(next_state, 0) / 255.0
+        return next_state, reward, done, info
     
     def random_action(self):
         return self.env.action_space.sample()
@@ -110,6 +111,7 @@ class VizdoomEnv:
         self.frame_stack = frame_stack
         self.num_actions = len(self.actions)
         self.state_deck = deque(maxlen=self.frame_stack)
+        self.state_deck_unwarped = deque(maxlen=self.frame_stack)
 
     def _warp(self, frame):
         return cv2.resize(frame, (self.frame_res[1], self.frame_res[0]), cv2.INTER_AREA)
@@ -119,23 +121,19 @@ class VizdoomEnv:
         self.state_deck = deque(maxlen=self.frame_stack)
         for _ in range(self.frame_stack):
             self.state_deck.append(self._warp(self.env.get_state().screen_buffer))
-        return np.expand_dims(np.asarray(self.state_deck), 0)
+        return np.expand_dims(np.asarray(self.state_deck), 0) / 255.0        
     
-    def step(self, action, train=True):        
-        if train:
-            reward = self.env.make_action(self.actions[action], self.frame_skip)
-        else:
-            reward = self.env.set_action(self.actions[action])
-            for _ in range(self.frame_skip):
-                self.env.advance_action()
-        
+    def step(self, action):        
+        reward = self.env.make_action(self.actions[action], self.frame_skip)
         done = self.env.is_episode_finished()
         if done:
             next_state = np.zeros_like(self.state_deck[-1])
         else:
             next_state = self._warp(self.env.get_state().screen_buffer)        
+        
         self.state_deck.append(next_state)
-        return np.expand_dims(np.asarray(self.state_deck), 0), reward, done, {}
+        next_state = np.expand_dims(np.asarray(self.state_deck), 0) / 255.0   
+        return next_state, reward, done, {}
     
     def random_action(self):
         return np.random.randint(0, self.num_actions, size=1).item()

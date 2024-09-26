@@ -14,8 +14,10 @@ COLORS = {
     "end": "\033[0m"
 }
 
+__all__ = ['AvgMeter', 'Logger', 'pbar']
 
-class AverageMeter:
+
+class AvgMeter:
 
     def __init__(self):
         self.reset()
@@ -33,11 +35,11 @@ class AverageMeter:
                 else:
                     self.metrics[key] = [value]
     
-    def return_dict(self):
+    def avg(self):
         return {key: np.mean(value) for key, value in self.metrics.items()}
 
-    def return_msg(self):
-        metrics = self.return_dict()
+    def msg(self):
+        metrics = self.avg()
         msg = "".join(["[{}] {:.4f} ".format(key, value) for key, value in metrics.items()])
         return msg
 
@@ -61,7 +63,7 @@ class Logger:
         else:
             print(f"{msg}")
 
-    def write(self, msg, mode):
+    def write(self, msg, mode=""):
         if mode == "info":
             msg = f"[INFO] {msg}"
         elif mode == "train":
@@ -73,62 +75,21 @@ class Logger:
     def record(self, msg, mode):
         self.print(msg, mode)
         self.write(msg, mode)
-
-
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-def progress_bar(progress=0, desc="Progress", status="", barlen=20):
+        
+    def display_args(self, args):
+        self.record("\n---- experiment configuration ----", mode='info')
+        args_ = vars(args)
+        for arg, value in args_.items():
+            self.record(f"  * {arg} => {value}", mode='')
+        self.record("----------------------------------", mode='info')
+        
+        
+def pbar(progress=0, desc="Progress", status="", barlen=20):
     status = status.ljust(30)
     if progress == 1:
         status = "{}".format(status.ljust(30))
     length = int(round(barlen * progress))
     text = "\r{}: [{}] {:.2f}% {}".format(
-        desc, COLORS["green"] + "="*(length-1) + ">" + COLORS["end"] + "-" * (barlen-length), progress * 100, status  
+        desc, COLORS["green"] + "="*(length-1) + ">" + COLORS["end"] + " " * (barlen-length), progress * 100, status  
     ) 
-    print(text, end="" if progress < 1 else "\n") 
-
-def open_config(file):
-    with open(file, "r") as f:
-        config = yaml.safe_load(f)
-    return config 
-
-def initialize_experiment(args, output_root, ckpt_dir=None, seed=420):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-    # Some other stuff
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    
-    config = open_config(args.config)
-
-    if ckpt_dir is None:
-        output_dir = os.path.join(output_root, args.output)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        logger = Logger(output_dir)
-
-        logger.print("Logging at {}".format(output_dir), mode="info")
-        logger.print("-" * 40)
-        logger.print("{:>20}".format("Configuration"))
-        logger.print("-" * 40)
-        logger.print(yaml.dump(config))
-        logger.print("-" * 40)
-
-        with open(os.path.join(output_dir, "hyperparameters.txt"), "w") as f:
-            f.write(yaml.dump(config))
-    else:
-        output_dir = ckpt_dir
-        logger = Logger(output_dir)
-
-    device = torch.device("cpu")
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logger.print("Found GPU device: {}".format(torch.cuda.get_device_name(0)), mode="info")
-
-    return config, output_dir, logger, device  
+    print(text, end="" if progress < 1 else "\n")
